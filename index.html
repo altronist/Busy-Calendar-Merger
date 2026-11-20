@@ -1,7 +1,2738 @@
-{
-       "name": "busy-calendar-merger",
-       "private": true,
-       "dependencies": {
-         "node-ical": "^0.18.0"
-       }
-     }
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Calendar Busy Blocker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+  <!-- Toast / Status Notification Banner (replaces alert()) -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full px-4 sm:px-0 pointer-events-none"></div>
+
+  <!-- Auth & GDPR Gate Modal -->
+  <div id="auth-modal" class="hidden fixed inset-0 z-40 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-2xl my-auto">
+      <div class="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
+        <div>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+            Local PBKDF2 Auth &amp; GDPR Privacy
+          </span>
+          <h2 class="text-xl font-bold text-white mt-2">Account Access &amp; Privacy Consent</h2>
+          <p class="text-xs text-slate-400 mt-1">
+            All account records, hashed credentials, and calendar data stay local in your browser storage (<span class="font-mono text-slate-300">localStorage</span>) unless you explicitly export or configure a feed URL.
+          </p>
+        </div>
+        <button
+          id="btn-close-auth-modal"
+          type="button"
+          class="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 cursor-pointer"
+        >
+          Close
+        </button>
+      </div>
+
+      <!-- Auth Tabs -->
+      <div class="mt-4 grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <button
+          id="tab-login"
+          type="button"
+          class="py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition cursor-pointer"
+        >
+          Log In
+        </button>
+        <button
+          id="tab-signup"
+          type="button"
+          class="py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition cursor-pointer"
+        >
+          Sign Up (GDPR Consent)
+        </button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" class="mt-4 space-y-3.5">
+        <div>
+          <label for="login-email" class="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
+          <input
+            id="login-email"
+            type="email"
+            required
+            placeholder="name@example.com"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <div>
+          <label for="login-password" class="block text-xs font-medium text-slate-300 mb-1">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            required
+            placeholder="Enter your password"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <div id="login-error" class="hidden text-xs text-rose-300 bg-rose-950/60 border border-rose-500/30 rounded-lg px-3 py-2"></div>
+        <button
+          type="submit"
+          class="w-full py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer"
+        >
+          Log In &amp; Load Workspace
+        </button>
+      </form>
+
+      <!-- Sign-Up Form with Explicit GDPR Consent -->
+      <form id="signup-form" class="hidden mt-4 space-y-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="signup-name" class="block text-xs font-medium text-slate-300 mb-1">Display Name</label>
+            <input
+              id="signup-name"
+              type="text"
+              placeholder="Your name"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label for="signup-email" class="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
+            <input
+              id="signup-email"
+              type="email"
+              required
+              placeholder="name@example.com"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label for="signup-password" class="block text-xs font-medium text-slate-300 mb-1">Password (min. 8 characters)</label>
+          <input
+            id="signup-password"
+            type="password"
+            required
+            minlength="8"
+            placeholder="Create a strong password"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <!-- Lawful Basis & Privacy Notice Box -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 space-y-1.5">
+          <div class="font-semibold text-slate-200">GDPR Privacy Notice &amp; Lawful Basis (Art. 6(1)(a) &amp; Art. 13)</div>
+          <p>
+            <strong class="text-slate-300">Controller &amp; Storage:</strong> Processed locally on your device in browser <span class="font-mono text-slate-300">localStorage</span>. Passwords are salted and hashed with Web Crypto <span class="font-mono text-slate-300">PBKDF2-SHA256</span> (100,000 iterations)—plaintext passwords are never stored.
+          </p>
+          <p>
+            <strong class="text-slate-300">Purpose &amp; Retention:</strong> Calendar busy/free time windows, slot labels, feed URLs, and preferences are stored solely to merge busy blocks and export <span class="font-mono text-slate-300">.ics</span> files until you erase your data or delete your account.
+          </p>
+        </div>
+
+        <label class="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer select-none">
+          <input
+            id="signup-gdpr-consent"
+            type="checkbox"
+            required
+            class="mt-0.5 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500 cursor-pointer"
+          />
+          <span>
+            I explicitly consent to local storage of my account profile, PBKDF2 password hash, and calendar busy-time inputs under the GDPR Privacy Notice above. I understand I can export or erase my data at any time.
+          </span>
+        </label>
+
+        <div id="signup-error" class="hidden text-xs text-rose-300 bg-rose-950/60 border border-rose-500/30 rounded-lg px-3 py-2"></div>
+        <button
+          type="submit"
+          class="w-full py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer"
+        >
+          Create Account &amp; Continue
+        </button>
+      </form>
+
+      <!-- Guest Mode Option -->
+      <div class="mt-4 pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <span class="text-[11px] text-slate-400">
+          Prefer not to create an account? You can use local guest mode without saving account credentials.
+        </span>
+        <button
+          id="btn-guest-mode"
+          type="button"
+          class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+        >
+          Continue as Guest
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GDPR Privacy & Data Rights Modal -->
+  <div id="gdpr-modal" class="hidden fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-2xl my-auto space-y-4">
+      <div class="flex items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div>
+          <h2 class="text-lg font-bold text-white">GDPR Privacy Notice &amp; Data Controls</h2>
+          <p class="text-xs text-slate-400 mt-0.5">Exercise your right to information, portability/export, retention control, and erasure.</p>
+        </div>
+        <button
+          id="btn-close-gdpr-modal"
+          type="button"
+          class="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 cursor-pointer"
+        >
+          Done
+        </button>
+      </div>
+
+      <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-300 space-y-2">
+        <div class="font-semibold text-white">Privacy &amp; Lawful Basis Summary</div>
+        <p class="text-slate-400">
+          <strong>Lawful Basis:</strong> Explicit consent (GDPR Art. 6(1)(a)) for account &amp; calendar workspace persistence, and legitimate interest / user-initiated action for generating consolidated busy-only <span class="font-mono text-slate-300">.ics</span> blocks.
+        </p>
+        <p class="text-slate-400">
+          <strong>Data Categories:</strong> Account email/display name, salted PBKDF2-SHA256 credential verifier, calendar slot names, optional feed URLs, imported ICS/JSON schedules, and merged busy intervals. No third-party tracking cookies or analytics scripts are embedded.
+        </p>
+        <p class="text-slate-400">
+          <strong>Your Rights:</strong> Access &amp; export your stored data anytime (Art. 15 &amp; Art. 20), withdraw consent or configure retention/session rules, and permanently erase all data (Art. 17).
+        </p>
+      </div>
+
+      <!-- Session & Retention Controls -->
+      <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label for="retention-mode" class="block text-xs font-semibold text-slate-200 mb-1">Data Retention Policy</label>
+          <select
+            id="retention-mode"
+            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="persistent">Keep until I erase / log out</option>
+            <option value="session_only">Session-only (clear on tab close)</option>
+            <option value="7_days">Auto-purge stale data after 7 days</option>
+          </select>
+        </div>
+        <div class="flex flex-col justify-between">
+          <span class="text-xs font-semibold text-slate-200">Active Session</span>
+          <div class="flex items-center justify-between gap-2 mt-1">
+            <span id="gdpr-session-status" class="text-xs font-mono text-emerald-300 truncate">Guest Mode</span>
+            <button
+              id="btn-logout"
+              type="button"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+            >
+              Log Out
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Export & Erasure Actions -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <button
+          id="btn-export-gdpr-json"
+          type="button"
+          class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer"
+        >
+          <span>Export All Data (JSON)</span>
+        </button>
+        <button
+          id="btn-export-gdpr-ics"
+          type="button"
+          class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 transition cursor-pointer"
+        >
+          <span>Export Busy Schedule (ICS)</span>
+        </button>
+      </div>
+
+      <div class="border border-rose-500/30 bg-rose-950/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="text-xs">
+          <div class="font-semibold text-rose-200">Right to Erasure (Delete Account &amp; All Stored Data)</div>
+          <div id="erase-confirm-hint" class="text-rose-300/80 mt-0.5">
+            Permanently wipes all local accounts, sessions, calendar slots, feed URLs, and cached schedules.
+          </div>
+        </div>
+        <button
+          id="btn-erase-all-gdpr"
+          type="button"
+          class="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition cursor-pointer"
+        >
+          Erase All Data
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <!-- Top Header -->
+    <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-6 border-b border-slate-800/80">
+      <div>
+        <div class="inline-flex flex-wrap items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-2">
+          <span>RFC 5545 Busy Consolidator</span>
+          <span class="text-slate-600">•</span>
+          <span>2 to 10 Dynamic Slots</span>
+          <span class="text-slate-600">•</span>
+          <span>GDPR Compliant</span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          Multi-Calendar Busy Blocker
+        </h1>
+        <p class="text-sm text-slate-400 mt-1 max-w-2xl">
+          Consolidate between 2 and 10 independent calendars (ICS files, JSON event arrays, or shared feed URLs) into a single <span class="font-mono text-slate-300">TRANSP:OPAQUE</span> busy-hours <span class="font-mono text-slate-300">.ics</span> download or reusable feed link.
+        </p>
+      </div>
+
+      <!-- Global Display Time Zone, Merge Options & Session/GDPR Controls -->
+      <div class="flex flex-wrap items-center gap-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+        <div class="flex flex-col">
+          <label for="display-tz" class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+            Preview Display TZ
+          </label>
+          <select id="display-tz" class="mt-1 bg-slate-950 text-slate-100 text-xs sm:text-sm border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="Asia/Shanghai" selected>Asia/Shanghai (UTC+8)</option>
+            <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">America/New_York (EST/EDT)</option>
+            <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+            <option value="Asia/Tokyo">Asia/Tokyo (UTC+9)</option>
+            <option value="Europe/London">Europe/London (GMT/BST)</option>
+          </select>
+        </div>
+
+        <label class="inline-flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none pt-4 sm:pt-5">
+          <input id="merge-adjacent" type="checkbox" checked class="rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500" />
+          <span>Merge touching slots</span>
+        </label>
+
+        <div class="flex items-center gap-2 pt-3 sm:pt-5 border-t sm:border-t-0 sm:border-l border-slate-800 sm:pl-3 w-full sm:w-auto justify-between sm:justify-start">
+          <button
+            id="btn-open-gdpr"
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition cursor-pointer"
+          >
+            GDPR &amp; Privacy
+          </button>
+          <button
+            id="btn-open-auth"
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 transition cursor-pointer"
+          >
+            <span id="header-account-label">Guest</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- One-Click Action Bar & Summary Metrics -->
+    <section class="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+      <!-- Summary KPIs -->
+      <div class="lg:col-span-5 grid grid-cols-3 gap-3">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+          <div class="text-xs text-slate-400">Active Slots</div>
+          <div id="kpi-slots" class="text-2xl font-bold text-white mt-1">0 / 2</div>
+          <div id="kpi-raw-events" class="text-[11px] text-slate-500 mt-0.5">0 busy intervals</div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+          <div class="text-xs text-slate-400">Merged Blocks</div>
+          <div id="kpi-merged" class="text-2xl font-bold text-indigo-400 mt-1">0</div>
+          <div id="kpi-free-skipped" class="text-[11px] text-slate-500 mt-0.5">0 free skipped</div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+          <div class="text-xs text-slate-400">Total Blocked</div>
+          <div id="kpi-hours" class="text-2xl font-bold text-emerald-400 mt-1">0.0h</div>
+          <div id="kpi-span" class="text-[11px] text-slate-500 mt-0.5">No range yet</div>
+        </div>
+      </div>
+
+      <!-- One-Click Output Buttons -->
+      <div class="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="text-xs text-slate-400 space-y-0.5">
+          <div class="font-semibold text-slate-200">One-Click Consolidated Outputs</div>
+          <div>Export a static busy-only <span class="font-mono text-slate-300">.ics</span> or generate a reusable feed link &amp; serverless endpoint.</div>
+        </div>
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+          <button
+            id="btn-download-ics"
+            type="button"
+            class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-950/50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Download Merged Busy .ics</span>
+          </button>
+
+          <button
+            id="btn-generate-feed"
+            type="button"
+            class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-100 border border-slate-700 transition cursor-pointer"
+          >
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span>Generate Reusable Feed Link</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reusable Feed Link & Serverless Config Drawer -->
+    <section id="feed-drawer" class="hidden mt-5 bg-slate-900 border border-indigo-500/30 rounded-2xl p-4 sm:p-5 shadow-xl">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div>
+          <h2 class="text-base font-semibold text-white flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            Reusable Busy-Hours Feed &amp; Serverless Endpoint
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Static <span class="font-mono text-slate-300">blob:</span> URLs only live in this browser tab; deploy the snippet below to a host/serverless function for a permanent subscribing URL.
+          </p>
+        </div>
+        <button id="btn-close-feed" type="button" class="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 self-start sm:self-auto cursor-pointer">
+          Close
+        </button>
+      </div>
+
+      <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Session Blob ICS Link -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+          <div class="text-xs font-semibold text-slate-300">1. Instant Session Feed URL (Current Tab)</div>
+          <div class="flex items-center gap-2">
+            <input id="session-feed-url" type="text" readonly class="w-full bg-slate-900 text-indigo-300 font-mono text-xs border border-slate-800 rounded-lg px-3 py-2 focus:outline-none" />
+            <button id="btn-copy-session-url" type="button" class="px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shrink-0 cursor-pointer">
+              Copy
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-500">
+            Useful for quick testing or downloading directly in this browser session.
+          </p>
+        </div>
+
+        <!-- Serverless Subscription URL Builder -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+          <div class="text-xs font-semibold text-slate-300">2. Permanent Subscribing Feed URL (Serverless)</div>
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <input
+              id="vercel-base-url"
+              type="url"
+              placeholder="https://your-project.vercel.app"
+              class="flex-1 bg-slate-900 text-slate-100 font-mono text-xs border border-slate-800 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button id="btn-copy-vercel-url" type="button" class="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shrink-0 cursor-pointer">
+              Copy /api/busy.ics URL
+            </button>
+          </div>
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <span id="configured-urls-count" class="text-[11px] text-slate-400">0 shared URLs configured across slots</span>
+            <button
+              id="btn-copy-vercel-env"
+              type="button"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            >
+              <span>Copy Env Vars (CAL_SLOT_1..N)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ready-to-deploy api/busy.js snippet -->
+      <div class="mt-4 bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <span class="text-xs font-semibold text-slate-300">
+            Serverless Function (<span class="font-mono text-indigo-300">api/busy.js</span>) — Pre-configured with your Slot URLs
+          </span>
+          <button
+            id="btn-copy-api-code"
+            type="button"
+            class="text-xs font-medium px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
+          >
+            Copy api/busy.js
+          </button>
+        </div>
+        <pre id="vercel-api-code" class="text-[11px] font-mono text-slate-300 overflow-x-auto max-h-56 leading-relaxed"></pre>
+      </div>
+
+      <!-- GitHub + Vercel Next Steps -->
+      <div class="mt-4 bg-slate-950/75 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-300 space-y-2">
+        <div class="font-semibold text-white">Next Steps: Deploy on GitHub + Vercel</div>
+        <ol class="list-decimal list-inside space-y-1 text-slate-400">
+          <li>Create a new GitHub repository and add <span class="font-mono text-slate-200">index.html</span> (this app), <span class="font-mono text-slate-200">api/busy.js</span>, and a <span class="font-mono text-slate-200">package.json</span> containing <span class="font-mono text-slate-200">"node-ical": "^0.18.0"</span>.</li>
+          <li>Import the GitHub repository into <strong class="text-slate-200">Vercel</strong> and click <strong class="text-slate-200">Deploy</strong>.</li>
+          <li>Paste your live Vercel domain above (e.g. <span class="font-mono text-slate-200">https://your-project.vercel.app</span>), copy <span class="font-mono text-slate-200">/api/busy.ics</span>, and subscribe to it in your calendar or scheduling app.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Main Grid: Dynamic Calendar Slots (2 to 10) + Merged Busy Preview -->
+    <div class="mt-6 grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+      <!-- Dynamic Calendar Slots -->
+      <section class="xl:col-span-7 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <h2 class="text-base font-semibold text-white">
+              Calendar Slots (<span id="slot-count-heading">2</span> / 10)
+            </h2>
+            <div class="inline-flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+              <button
+                id="btn-remove-slot"
+                type="button"
+                title="Remove last calendar slot (minimum 2)"
+                class="w-7 h-7 inline-flex items-center justify-center rounded-md text-sm font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 disabled:opacity-35 disabled:cursor-not-allowed transition cursor-pointer"
+              >
+                -
+              </button>
+              <button
+                id="btn-add-slot"
+                type="button"
+                title="Add another calendar slot (maximum 10)"
+                class="w-7 h-7 inline-flex items-center justify-center rounded-md text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-35 disabled:cursor-not-allowed transition cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <button
+            id="btn-clear-all"
+            type="button"
+            class="text-xs text-rose-400 hover:text-rose-300 font-medium px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition cursor-pointer"
+          >
+            Reset Slots
+          </button>
+        </div>
+
+        <div id="slots-container" class="space-y-3.5"></div>
+      </section>
+
+      <!-- Consolidated Busy Blocks Preview -->
+      <section class="xl:col-span-5 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 xl:sticky xl:top-6">
+        <div class="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
+          <div>
+            <h2 class="text-base font-semibold text-white">Consolidated Busy Preview</h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              All events exported as <span class="font-mono text-slate-300">SUMMARY:Busy</span> and <span class="font-mono text-slate-300">TRANSP:OPAQUE</span>.
+            </p>
+          </div>
+          <span id="preview-count-badge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+            0 blocks
+          </span>
+        </div>
+
+        <!-- Filter & Quick Search -->
+        <div class="mt-3.5 flex items-center gap-2">
+          <input
+            id="preview-filter"
+            type="text"
+            placeholder="Filter by date, calendar, or event..."
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <label class="inline-flex items-center gap-1.5 text-xs text-slate-400 shrink-0 cursor-pointer select-none">
+            <input id="upcoming-only" type="checkbox" class="rounded border-slate-700 bg-slate-950 text-indigo-500" />
+            <span>Upcoming</span>
+          </label>
+        </div>
+
+        <!-- Busy Blocks List -->
+        <div id="busy-preview-list" class="mt-3.5 space-y-2 max-h-[540px] overflow-y-auto pr-1">
+          <div class="text-center py-12 px-4 border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+            Import an <span class="font-mono text-slate-400">.ics</span> file, paste a <span class="font-mono text-slate-400">.json</span> schedule, or enter a shared feed URL in any slot to preview consolidated busy hours.
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Multi-Calendar Busy Blocker
+     * Consolidates between 2 and 10 independent calendar slots (ICS, JSON, or Shared Feed URL)
+     * into a single TRANSP:OPAQUE busy-hours .ics file or reusable feed link, with local PBKDF2
+     * authentication and GDPR privacy/export/retention/erasure controls.
+     */
+
+    const MIN_SLOTS = 2;
+    const MAX_SLOTS = 10;
+    const STORAGE_KEY = 'generic_multi_cal_busy_blocker_v3';
+    const SESSION_STORAGE_KEY = 'generic_multi_cal_session_v1';
+
+    const TIMEZONE_OPTIONS = [
+      { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
+      { value: 'Asia/Shanghai', label: 'Asia/Shanghai (UTC+8)' },
+      { value: 'Europe/Paris', label: 'Europe/Paris (CET/CEST)' },
+      { value: 'Europe/London', label: 'Europe/London (GMT/BST)' },
+      { value: 'America/New_York', label: 'America/New_York (EST/EDT)' },
+      { value: 'America/Chicago', label: 'America/Chicago (CST/CDT)' },
+      { value: 'America/Los_Angeles', label: 'America/Los_Angeles (PST/PDT)' },
+      { value: 'Asia/Tokyo', label: 'Asia/Tokyo (UTC+9)' },
+      { value: 'Asia/Singapore', label: 'Asia/Singapore (UTC+8)' },
+      { value: 'Australia/Sydney', label: 'Australia/Sydney (AEST/AEDT)' },
+    ];
+
+    function makeSlot(num) {
+      return {
+        id: num,
+        label: `Calendar ${num}`,
+        mode: 'ics', // 'ics' | 'json' | 'url'
+        timezone: 'UTC',
+        tzOverride: false,
+        url: '',
+        rawText: '',
+        sourceName: '',
+        enabled: true,
+      };
+    }
+
+    function createDefaultSlots(count = MIN_SLOTS) {
+      const clamped = Math.max(MIN_SLOTS, Math.min(MAX_SLOTS, count));
+      return Array.from({ length: clamped }, (_, idx) => makeSlot(idx + 1));
+    }
+
+    const state = {
+      slots: createDefaultSlots(MIN_SLOTS),
+      parsedBySlot: {}, // slotId -> { intervals, freeCount, hasFloating, error, format }
+      mergedBlocks: [],
+      displayTz: 'Asia/Shanghai',
+      mergeAdjacent: true,
+      vercelBaseUrl: 'https://your-calendar-merger.vercel.app',
+      currentBlobUrl: null,
+      users: {}, // emailLower -> { name, email, saltHex, hashHex, consentAcceptedAt, createdAt }
+      currentUserEmail: null,
+      isGuest: true,
+      authUnlocked: true,
+      retentionMode: 'persistent', // 'persistent' | 'session_only' | '7_days'
+      lastUpdatedAt: Date.now(),
+      eraseArmed: false,
+    };
+
+    // -------------------------------------------------------------------------
+    // Web Crypto PBKDF2 Password Hashing & Session Management
+    // -------------------------------------------------------------------------
+    function bytesToHex(bytes) {
+      return Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    function hexToBytes(hex) {
+      const clean = String(hex || '').trim();
+      const out = new Uint8Array(Math.floor(clean.length / 2));
+      for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+      }
+      return out;
+    }
+
+    function constantTimeHexEqual(a, b) {
+      if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+      let diff = 0;
+      for (let i = 0; i < a.length; i++) {
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+      }
+      return diff === 0;
+    }
+
+    async function hashPasswordPbkdf2(password, saltHex = null) {
+      const enc = new TextEncoder();
+      const saltBytes = saltHex
+        ? hexToBytes(saltHex)
+        : (window.crypto && typeof window.crypto.getRandomValues === 'function'
+            ? window.crypto.getRandomValues(new Uint8Array(16))
+            : Uint8Array.from({ length: 16 }, (_, i) => ((i * 37 + 19) % 256)));
+
+      if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.importKey === 'function') {
+        const keyMaterial = await window.crypto.subtle.importKey(
+          'raw',
+          enc.encode(password),
+          { name: 'PBKDF2' },
+          false,
+          ['deriveBits']
+        );
+        const derivedBits = await window.crypto.subtle.deriveBits(
+          {
+            name: 'PBKDF2',
+            salt: saltBytes,
+            iterations: 100000,
+            hash: 'SHA-256',
+          },
+          keyMaterial,
+          256
+        );
+        return {
+          saltHex: bytesToHex(saltBytes),
+          hashHex: bytesToHex(new Uint8Array(derivedBits)),
+        };
+      }
+
+      // Deterministic fallback hash if Web Crypto subtle is unavailable in a restricted context
+      let h1 = 0x811c9dc5;
+      let h2 = 0x01000193;
+      const combined = password + ':' + bytesToHex(saltBytes);
+      for (let i = 0; i < combined.length; i++) {
+        const code = combined.charCodeAt(i);
+        h1 ^= code;
+        h1 = Math.imul(h1, 0x01000193) >>> 0;
+        h2 = ((h2 << 5) - h2 + code + i) >>> 0;
+      }
+      const fallbackHex = (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).repeat(4);
+      return {
+        saltHex: bytesToHex(saltBytes),
+        hashHex: fallbackHex.slice(0, 64),
+      };
+    }
+
+    function readSessionMarker() {
+      try {
+        const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function writeSessionMarker() {
+      try {
+        sessionStorage.setItem(
+          SESSION_STORAGE_KEY,
+          JSON.stringify({
+            unlocked: state.authUnlocked,
+            isGuest: state.isGuest,
+            email: state.currentUserEmail,
+          })
+        );
+      } catch (_) {
+        // Ignore storage errors in sandboxed frames
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // UI Helpers (Toast notifications, clipboard copy, persistence)
+    // -------------------------------------------------------------------------
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const palette = {
+        success: 'bg-emerald-950/95 border-emerald-500/40 text-emerald-200',
+        error: 'bg-rose-950/95 border-rose-500/40 text-rose-200',
+        info: 'bg-slate-900/95 border-slate-700 text-slate-100',
+      };
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto border rounded-xl px-4 py-3 text-xs font-medium shadow-2xl transition-all duration-200 ${palette[type] || palette.info}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(6px)';
+        setTimeout(() => toast.remove(), 220);
+      }, 3600);
+    }
+
+    async function copyToClipboard(text, successMsg = 'Copied to clipboard.') {
+      const str = String(text ?? '');
+      if (!str) {
+        showToast('Nothing to copy yet.', 'error');
+        return;
+      }
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(str);
+          showToast(successMsg, 'success');
+          return;
+        }
+      } catch (_) {
+        // Fall through to execCommand fallback
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = str;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast(successMsg, 'success');
+      } catch (_) {
+        showToast('Copy failed. Please select and copy manually.', 'error');
+      }
+    }
+
+    function saveState() {
+      try {
+        state.lastUpdatedAt = Date.now();
+        const payload = {
+          slots: state.slots.map((s, idx) => ({
+            id: idx + 1,
+            label: s.label,
+            mode: s.mode,
+            timezone: s.timezone,
+            tzOverride: s.tzOverride,
+            url: s.url,
+            rawText: s.rawText ? s.rawText.slice(0, 450000) : '',
+            sourceName: s.sourceName,
+            enabled: s.enabled,
+          })),
+          displayTz: state.displayTz,
+          mergeAdjacent: state.mergeAdjacent,
+          vercelBaseUrl: state.vercelBaseUrl,
+          users: state.users,
+          currentUserEmail: state.currentUserEmail,
+          retentionMode: state.retentionMode,
+          lastUpdatedAt: state.lastUpdatedAt,
+        };
+
+        if (state.retentionMode === 'session_only') {
+          localStorage.removeItem(STORAGE_KEY);
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } else {
+          sessionStorage.removeItem(STORAGE_KEY);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        }
+        writeSessionMarker();
+      } catch (err) {
+        console.warn('Unable to persist state:', err);
+      }
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+
+        if (parsed.retentionMode && ['persistent', 'session_only', '7_days'].includes(parsed.retentionMode)) {
+          state.retentionMode = parsed.retentionMode;
+        }
+
+        if (
+          state.retentionMode === '7_days' &&
+          typeof parsed.lastUpdatedAt === 'number' &&
+          Date.now() - parsed.lastUpdatedAt > 7 * 24 * 3600 * 1000
+        ) {
+          localStorage.removeItem(STORAGE_KEY);
+          sessionStorage.removeItem(STORAGE_KEY);
+          return;
+        }
+
+        if (parsed.users && typeof parsed.users === 'object') {
+          state.users = parsed.users;
+        }
+        if (parsed.currentUserEmail && state.users[parsed.currentUserEmail]) {
+          state.currentUserEmail = parsed.currentUserEmail;
+        }
+
+        if (Array.isArray(parsed.slots) && parsed.slots.length > 0) {
+          const clampedCount = Math.max(MIN_SLOTS, Math.min(MAX_SLOTS, parsed.slots.length));
+          state.slots = Array.from({ length: clampedCount }, (_, idx) => {
+            const def = makeSlot(idx + 1);
+            const saved = parsed.slots[idx];
+            if (!saved) return def;
+            const validMode = ['ics', 'json', 'url'].includes(saved.mode) ? saved.mode : def.mode;
+            return {
+              ...def,
+              label: typeof saved.label === 'string' && saved.label.trim() ? saved.label.trim() : def.label,
+              mode: validMode,
+              timezone: saved.timezone || def.timezone,
+              tzOverride: Boolean(saved.tzOverride),
+              url: saved.url || '',
+              rawText: saved.rawText || '',
+              sourceName: saved.sourceName || '',
+              enabled: typeof saved.enabled === 'boolean' ? saved.enabled : true,
+            };
+          });
+        }
+
+        if (parsed.displayTz) state.displayTz = parsed.displayTz;
+        if (typeof parsed.mergeAdjacent === 'boolean') state.mergeAdjacent = parsed.mergeAdjacent;
+        if (parsed.vercelBaseUrl) state.vercelBaseUrl = parsed.vercelBaseUrl;
+
+        const sess = readSessionMarker();
+        if (sess && sess.unlocked) {
+          state.authUnlocked = true;
+          state.isGuest = Boolean(sess.isGuest || !sess.email);
+          state.currentUserEmail = sess.email && state.users[sess.email] ? sess.email : null;
+        } else {
+          state.authUnlocked = true;
+          state.isGuest = !state.currentUserEmail;
+        }
+      } catch (err) {
+        console.warn('Failed to load saved state:', err);
+        state.authUnlocked = true;
+        state.isGuest = true;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Time Zone Conversion Engine (IANA TZ via Intl.DateTimeFormat)
+    // -------------------------------------------------------------------------
+    function getOffsetMinutesForZone(utcDate, timeZone) {
+      if (timeZone === 'UTC') return 0;
+      try {
+        const dtf = new Intl.DateTimeFormat('en-US', {
+          timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+        const parts = dtf.formatToParts(utcDate);
+        const map = {};
+        for (const p of parts) {
+          if (p.type !== 'literal') map[p.type] = p.value;
+        }
+        const hour = map.hour === '24' ? '00' : map.hour;
+        const asUtcMs = Date.UTC(
+          Number(map.year),
+          Number(map.month) - 1,
+          Number(map.day),
+          Number(hour),
+          Number(map.minute),
+          Number(map.second)
+        );
+        return Math.round((asUtcMs - utcDate.getTime()) / 60000);
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    function zonedPartsToUtcDate(parts, timeZone) {
+      const year = Number(parts.year);
+      const month = Number(parts.month);
+      const day = Number(parts.day);
+      const hour = Number(parts.hour || 0);
+      const minute = Number(parts.minute || 0);
+      const second = Number(parts.second || 0);
+
+      if (!timeZone || timeZone === 'UTC') {
+        return new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+      }
+
+      const naiveUtcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+      let candidate = new Date(naiveUtcMs);
+      let offsetMin = getOffsetMinutesForZone(candidate, timeZone);
+      candidate = new Date(naiveUtcMs - offsetMin * 60000);
+      const secondOffsetMin = getOffsetMinutesForZone(candidate, timeZone);
+      if (secondOffsetMin !== offsetMin) {
+        candidate = new Date(naiveUtcMs - secondOffsetMin * 60000);
+      }
+      return candidate;
+    }
+
+    function formatInZone(date, timeZone, options = {}) {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: timeZone || 'UTC',
+          ...options,
+        }).format(date);
+      } catch (_) {
+        return date.toISOString();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ICS Parser (with line unfolding, TZID, EXDATE, RDATE & basic RRULE expansion)
+    // -------------------------------------------------------------------------
+    function unfoldIcsLines(icsText) {
+      return String(icsText || '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\n[ \t]/g, '');
+    }
+
+    function parseIcsDateValue(rawVal, explicitTz, fallbackTz) {
+      if (!rawVal) return { date: null, floating: false };
+      const val = String(rawVal).trim();
+
+      // All-day date: YYYYMMDD
+      const dateOnlyMatch = val.match(/^(\d{4})(\d{2})(\d{2})$/);
+      if (dateOnlyMatch) {
+        const [, y, m, d] = dateOnlyMatch;
+        const tz = explicitTz || fallbackTz || 'UTC';
+        return {
+          date: zonedPartsToUtcDate({ year: y, month: m, day: d, hour: 0, minute: 0, second: 0 }, tz),
+          floating: !explicitTz,
+        };
+      }
+
+      // UTC timestamp: YYYYMMDDTHHMMSSZ
+      const utcMatch = val.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/i);
+      if (utcMatch) {
+        const [, y, m, d, H, M, S] = utcMatch;
+        return {
+          date: new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(H), Number(M), Number(S))),
+          floating: false,
+        };
+      }
+
+      // Local or TZ-qualified timestamp: YYYYMMDDTHHMMSS
+      const localMatch = val.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+      if (localMatch) {
+        const [, y, m, d, H, M, S] = localMatch;
+        const tz = explicitTz || fallbackTz || 'UTC';
+        return {
+          date: zonedPartsToUtcDate({ year: y, month: m, day: d, hour: H, minute: M, second: S }, tz),
+          floating: !explicitTz,
+        };
+      }
+
+      const fallbackParsed = new Date(val);
+      if (!Number.isNaN(fallbackParsed.getTime())) {
+        return { date: fallbackParsed, floating: false };
+      }
+      return { date: null, floating: false };
+    }
+
+    function expandIcsRRule(startDate, endDate, rruleStr, exDatesSet, rDatesList) {
+      const occurrences = [];
+      const durationMs = Math.max(0, endDate.getTime() - startDate.getTime());
+      const horizonMs = Date.now() + 365 * 24 * 3600 * 1000;
+
+      const params = {};
+      String(rruleStr || '')
+        .split(';')
+        .forEach((pair) => {
+          const idx = pair.indexOf('=');
+          if (idx > 0) {
+            params[pair.slice(0, idx).toUpperCase()] = pair.slice(idx + 1).toUpperCase();
+          }
+        });
+
+      const freq = params.FREQ || 'DAILY';
+      const interval = Math.max(1, parseInt(params.INTERVAL || '1', 10) || 1);
+      const maxCount = params.COUNT ? Math.min(250, Math.max(1, parseInt(params.COUNT, 10) || 25)) : 120;
+
+      let untilMs = horizonMs;
+      if (params.UNTIL) {
+        const parsedUntil = parseIcsDateValue(params.UNTIL, null, 'UTC').date;
+        if (parsedUntil) {
+          untilMs = Math.min(horizonMs, parsedUntil.getTime());
+        }
+      }
+
+      const dayMap = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+      const byDay = params.BYDAY
+        ? params.BYDAY.split(',')
+            .map((d) => dayMap[d.trim().slice(-2)])
+            .filter((n) => typeof n === 'number')
+        : null;
+
+      let cursor = new Date(startDate.getTime());
+      let steps = 0;
+      const safetyCap = 400;
+
+      const addOccurrence = (occStart) => {
+        const key = occStart.toISOString();
+        if (exDatesSet.has(key)) return;
+        occurrences.push({
+          start: new Date(occStart.getTime()),
+          end: new Date(occStart.getTime() + durationMs),
+        });
+      };
+
+      addOccurrence(cursor);
+
+      while (occurrences.length < maxCount && steps < safetyCap) {
+        steps++;
+        if (freq === 'DAILY') {
+          cursor = new Date(cursor.getTime() + interval * 24 * 3600 * 1000);
+        } else if (freq === 'WEEKLY') {
+          if (byDay && byDay.length > 0) {
+            const weekStart = new Date(cursor.getTime());
+            weekStart.setUTCDate(weekStart.getUTCDate() - weekStart.getUTCDay());
+            let addedInWeek = false;
+            for (const dow of byDay) {
+              const cand = new Date(weekStart.getTime());
+              cand.setUTCDate(weekStart.getUTCDate() + dow);
+              cand.setUTCHours(
+                startDate.getUTCHours(),
+                startDate.getUTCMinutes(),
+                startDate.getUTCSeconds(),
+                0
+              );
+              if (cand.getTime() > startDate.getTime() && cand.getTime() <= untilMs) {
+                addOccurrence(cand);
+                addedInWeek = true;
+              }
+            }
+            cursor = new Date(weekStart.getTime() + interval * 7 * 24 * 3600 * 1000);
+            cursor.setUTCHours(
+              startDate.getUTCHours(),
+              startDate.getUTCMinutes(),
+              startDate.getUTCSeconds(),
+              0
+            );
+            if (!addedInWeek && cursor.getTime() <= untilMs) {
+              addOccurrence(cursor);
+            }
+          } else {
+            cursor = new Date(cursor.getTime() + interval * 7 * 24 * 3600 * 1000);
+          }
+        } else if (freq === 'MONTHLY') {
+          cursor = new Date(
+            Date.UTC(
+              cursor.getUTCFullYear(),
+              cursor.getUTCMonth() + interval,
+              cursor.getUTCDate(),
+              cursor.getUTCHours(),
+              cursor.getUTCMinutes(),
+              cursor.getUTCSeconds()
+            )
+          );
+        } else if (freq === 'YEARLY') {
+          cursor = new Date(
+            Date.UTC(
+              cursor.getUTCFullYear() + interval,
+              cursor.getUTCMonth(),
+              cursor.getUTCDate(),
+              cursor.getUTCHours(),
+              cursor.getUTCMinutes(),
+              cursor.getUTCSeconds()
+            )
+          );
+        } else {
+          break;
+        }
+
+        if (cursor.getTime() > untilMs) break;
+        if (!(freq === 'WEEKLY' && byDay && byDay.length > 0)) {
+          addOccurrence(cursor);
+        }
+      }
+
+      for (const rd of rDatesList) {
+        addOccurrence(rd);
+      }
+
+      return occurrences;
+    }
+
+    function parseIcsContent(icsText, slot) {
+      const unfolded = unfoldIcsLines(icsText);
+      if (!/BEGIN:VEVENT/i.test(unfolded)) {
+        return { intervals: [], freeCount: 0, hasFloating: false, error: 'No VEVENT blocks found in ICS content.', format: 'ICS' };
+      }
+
+      const rawEvents = unfolded.split(/BEGIN:VEVENT/i).slice(1);
+      const intervals = [];
+      let freeCount = 0;
+      let hasFloating = false;
+      const fallbackTz = slot.tzOverride ? slot.timezone : 'UTC';
+
+      for (const chunk of rawEvents) {
+        const veventBody = chunk.split(/END:VEVENT/i)[0] || '';
+        const lines = veventBody.split('\n');
+
+        let summary = 'Busy Event';
+        let transp = 'OPAQUE';
+        let status = 'CONFIRMED';
+        let rrule = '';
+        const exDatesSet = new Set();
+        const rDatesList = [];
+        let startParsed = null;
+        let endParsed = null;
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const colonIdx = line.indexOf(':');
+          if (colonIdx === -1) continue;
+          const propSpec = line.slice(0, colonIdx);
+          const propVal = line.slice(colonIdx + 1).trim();
+          const specParts = propSpec.split(';');
+          const propName = specParts[0].trim().toUpperCase();
+
+          let tzid = null;
+          for (let i = 1; i < specParts.length; i++) {
+            const p = specParts[i];
+            if (/^TZID=/i.test(p)) {
+              tzid = p.split('=')[1].replace(/^"|"$/g, '').trim();
+            }
+          }
+
+          if (propName === 'SUMMARY') {
+            summary = propVal.replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\n/gi, ' ').trim() || 'Busy Event';
+          } else if (propName === 'TRANSP') {
+            transp = propVal.toUpperCase();
+          } else if (propName === 'STATUS') {
+            status = propVal.toUpperCase();
+          } else if (propName === 'RRULE') {
+            rrule = propVal;
+          } else if (propName === 'DTSTART') {
+            startParsed = parseIcsDateValue(propVal, tzid, fallbackTz);
+            if (startParsed.floating) hasFloating = true;
+          } else if (propName === 'DTEND') {
+            endParsed = parseIcsDateValue(propVal, tzid, fallbackTz);
+            if (endParsed.floating) hasFloating = true;
+          } else if (propName === 'EXDATE') {
+            propVal.split(',').forEach((dStr) => {
+              const ex = parseIcsDateValue(dStr.trim(), tzid, fallbackTz);
+              if (ex.date) exDatesSet.add(ex.date.toISOString());
+            });
+          } else if (propName === 'RDATE') {
+            propVal.split(',').forEach((dStr) => {
+              const rd = parseIcsDateValue(dStr.trim(), tzid, fallbackTz);
+              if (rd.date) rDatesList.push(rd.date);
+            });
+          }
+        }
+
+        if (status === 'CANCELLED' || transp === 'TRANSPARENT') {
+          freeCount++;
+          continue;
+        }
+
+        if (!startParsed || !startParsed.date) continue;
+        const sDate = startParsed.date;
+        const eDate = endParsed && endParsed.date && endParsed.date > sDate
+          ? endParsed.date
+          : new Date(sDate.getTime() + 60 * 60 * 1000);
+
+        const expanded = rrule
+          ? expandIcsRRule(sDate, eDate, rrule, exDatesSet, rDatesList)
+          : [{ start: sDate, end: eDate }];
+
+        for (const occ of expanded) {
+          if (occ.end > occ.start) {
+            intervals.push({
+              start: occ.start,
+              end: occ.end,
+              title: summary,
+              slotId: slot.id,
+              slotLabel: slot.label,
+            });
+          }
+        }
+      }
+
+      return { intervals, freeCount, hasFloating, error: null, format: 'ICS' };
+    }
+
+    // -------------------------------------------------------------------------
+    // JSON Schedule Parser
+    // -------------------------------------------------------------------------
+    function parseFlexibleDate(val, fallbackTz) {
+      if (!val) return null;
+      if (val instanceof Date && !Number.isNaN(val.getTime())) return val;
+      const str = String(val).trim();
+      if (!str) return null;
+
+      // Explicit timezone offset or Z suffix
+      if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(str)) {
+        const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+
+      // Naive date-time string: YYYY-MM-DD HH:mm[:ss] or YYYY-MM-DDTHH:mm[:ss]
+      const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+      if (m) {
+        const [, y, mo, d, h, mi, s] = m;
+        return zonedPartsToUtcDate(
+          { year: y, month: mo, day: d, hour: h, minute: mi, second: s || '0' },
+          fallbackTz || 'UTC'
+        );
+      }
+
+      const fallback = new Date(str);
+      return Number.isNaN(fallback.getTime()) ? null : fallback;
+    }
+
+    function parseJsonContent(jsonText, slot) {
+      let data;
+      try {
+        data = JSON.parse(jsonText);
+      } catch (err) {
+        return { intervals: [], freeCount: 0, hasFloating: true, error: `Invalid JSON: ${err.message}`, format: 'JSON' };
+      }
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data && data.events)
+          ? data.events
+          : Array.isArray(data && data.items)
+            ? data.items
+            : null;
+
+      if (!list) {
+        return { intervals: [], freeCount: 0, hasFloating: true, error: 'Expected a JSON array of event objects.', format: 'JSON' };
+      }
+
+      const intervals = [];
+      let freeCount = 0;
+      const tz = slot.timezone || 'UTC';
+
+      for (const ev of list) {
+        if (!ev || typeof ev !== 'object') continue;
+        const busyFlag = String(ev.busyStatus || ev.transparency || ev.showAs || '').toLowerCase();
+        if (busyFlag === 'free' || busyFlag === 'transparent') {
+          freeCount++;
+          continue;
+        }
+
+        const rawStart = ev.start ?? ev.start_date ?? ev.startDate ?? ev.begin;
+        const rawEnd = ev.end ?? ev.end_date ?? ev.endDate ?? ev.finish;
+        const sDate = parseFlexibleDate(rawStart, tz);
+        if (!sDate) continue;
+
+        let eDate = parseFlexibleDate(rawEnd, tz);
+        if (!eDate || eDate <= sDate) {
+          eDate = new Date(sDate.getTime() + 60 * 60 * 1000);
+        }
+
+        const title = String(ev.title || ev.summary || ev.course || ev.subject || 'Busy Slot').trim();
+        intervals.push({
+          start: sDate,
+          end: eDate,
+          title,
+          slotId: slot.id,
+          slotLabel: slot.label,
+        });
+      }
+
+      return { intervals, freeCount, hasFloating: true, error: null, format: 'JSON' };
+    }
+
+    // -------------------------------------------------------------------------
+    // Consolidation & Busy Block Merging
+    // -------------------------------------------------------------------------
+    function recomputeAll() {
+      let totalRaw = 0;
+      let totalFree = 0;
+      const allIntervals = [];
+
+      for (const slot of state.slots) {
+        if (!slot.enabled) {
+          state.parsedBySlot[slot.id] = { intervals: [], freeCount: 0, hasFloating: false, error: null, format: null };
+          continue;
+        }
+
+        if (slot.mode === 'url') {
+          const cached = state.parsedBySlot[slot.id];
+          if (cached && cached.fromFetchedUrl && cached.url === slot.url && Array.isArray(cached.intervals)) {
+            totalRaw += cached.intervals.length;
+            totalFree += cached.freeCount || 0;
+            allIntervals.push(...cached.intervals);
+          } else {
+            state.parsedBySlot[slot.id] = {
+              intervals: [],
+              freeCount: 0,
+              hasFloating: false,
+              error: null,
+              format: 'Feed URL',
+            };
+          }
+          continue;
+        }
+
+        const text = (slot.rawText || '').trim();
+        if (!text) {
+          state.parsedBySlot[slot.id] = { intervals: [], freeCount: 0, hasFloating: false, error: null, format: null };
+          continue;
+        }
+
+        const parsed = slot.mode === 'json' ? parseJsonContent(text, slot) : parseIcsContent(text, slot);
+        state.parsedBySlot[slot.id] = parsed;
+        if (!parsed.error) {
+          totalRaw += parsed.intervals.length;
+          totalFree += parsed.freeCount || 0;
+          allIntervals.push(...parsed.intervals);
+        }
+      }
+
+      allIntervals.sort((a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime());
+
+      const merged = [];
+      const allowTouching = Boolean(state.mergeAdjacent);
+
+      for (const item of allIntervals) {
+        if (!merged.length) {
+          merged.push({
+            start: new Date(item.start.getTime()),
+            end: new Date(item.end.getTime()),
+            sources: [{ slotId: item.slotId, slotLabel: item.slotLabel, title: item.title }],
+          });
+          continue;
+        }
+
+        const prev = merged[merged.length - 1];
+        const overlapsOrTouches = allowTouching
+          ? item.start.getTime() <= prev.end.getTime()
+          : item.start.getTime() < prev.end.getTime();
+
+        if (overlapsOrTouches) {
+          if (item.end.getTime() > prev.end.getTime()) {
+            prev.end = new Date(item.end.getTime());
+          }
+          const exists = prev.sources.some((s) => s.slotId === item.slotId && s.title === item.title);
+          if (!exists) {
+            prev.sources.push({ slotId: item.slotId, slotLabel: item.slotLabel, title: item.title });
+          }
+        } else {
+          merged.push({
+            start: new Date(item.start.getTime()),
+            end: new Date(item.end.getTime()),
+            sources: [{ slotId: item.slotId, slotLabel: item.slotLabel, title: item.title }],
+          });
+        }
+      }
+
+      state.mergedBlocks = merged;
+      updateKpis(totalRaw, totalFree);
+      renderSlots();
+      renderPreview();
+      renderFeedDrawer();
+    }
+
+    function updateKpis(totalRaw, totalFree) {
+      const enabledCount = state.slots.filter((s) => s.enabled).length;
+      const slotsEl = document.getElementById('kpi-slots');
+      const rawEl = document.getElementById('kpi-raw-events');
+      const mergedEl = document.getElementById('kpi-merged');
+      const freeEl = document.getElementById('kpi-free-skipped');
+      const hoursEl = document.getElementById('kpi-hours');
+      const spanEl = document.getElementById('kpi-span');
+      const dlBtn = document.getElementById('btn-download-ics');
+
+      if (slotsEl) slotsEl.textContent = `${enabledCount} / ${state.slots.length}`;
+      if (rawEl) rawEl.textContent = `${totalRaw} busy interval${totalRaw === 1 ? '' : 's'}`;
+      if (mergedEl) mergedEl.textContent = String(state.mergedBlocks.length);
+      if (freeEl) freeEl.textContent = `${totalFree} free skipped`;
+
+      const totalMs = state.mergedBlocks.reduce((acc, b) => acc + Math.max(0, b.end.getTime() - b.start.getTime()), 0);
+      const totalHours = totalMs / (1000 * 3600);
+      if (hoursEl) hoursEl.textContent = `${totalHours.toFixed(1)}h`;
+
+      if (spanEl) {
+        if (state.mergedBlocks.length > 0) {
+          const firstStr = formatInZone(state.mergedBlocks[0].start, state.displayTz, { month: 'short', day: 'numeric' });
+          const lastStr = formatInZone(
+            state.mergedBlocks[state.mergedBlocks.length - 1].end,
+            state.displayTz,
+            { month: 'short', day: 'numeric', year: 'numeric' }
+          );
+          spanEl.textContent = `${firstStr} – ${lastStr}`;
+        } else {
+          spanEl.textContent = 'No range yet';
+        }
+      }
+
+      const hasAnyUrl = state.slots.some((s) => s.enabled && s.mode === 'url' && (s.url || '').trim());
+      if (dlBtn) {
+        dlBtn.disabled = state.mergedBlocks.length === 0 && !hasAnyUrl;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ICS Exporter & Reusable Feed / Serverless Code Generator
+    // -------------------------------------------------------------------------
+    function toUtcIcsStamp(date) {
+      return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    }
+
+    function escapeIcsText(str) {
+      return String(str || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/\n/g, '\\n')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,');
+    }
+
+    function buildConsolidatedIcsString() {
+      const lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Multi-Calendar Busy Blocker//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'X-WR-CALNAME:Consolidated Busy Hours',
+        'X-WR-TIMEZONE:UTC',
+      ];
+
+      state.mergedBlocks.forEach((block, idx) => {
+        const dtStart = toUtcIcsStamp(block.start);
+        const dtEnd = toUtcIcsStamp(block.end);
+        const uid = `busy-${idx + 1}-${dtStart}@busy-blocker.local`;
+        const slotSummary = [...new Set(block.sources.map((s) => s.slotLabel).filter(Boolean))].join(', ');
+        const desc = slotSummary
+          ? escapeIcsText(`Consolidated busy time across: ${slotSummary}`)
+          : 'Consolidated busy time';
+
+        lines.push(
+          'BEGIN:VEVENT',
+          `UID:${uid}`,
+          `DTSTAMP:${toUtcIcsStamp(new Date())}`,
+          `DTSTART:${dtStart}`,
+          `DTEND:${dtEnd}`,
+          'SUMMARY:Busy',
+          `DESCRIPTION:${desc}`,
+          'TRANSP:OPAQUE',
+          'STATUS:CONFIRMED',
+          'END:VEVENT'
+        );
+      });
+
+      lines.push('END:VCALENDAR');
+      return lines.join('\r\n') + '\r\n';
+    }
+
+    function downloadConsolidatedIcs() {
+      if (state.mergedBlocks.length === 0) {
+        showToast('No busy blocks to export yet. Load an ICS/JSON calendar or fetch a feed first.', 'error');
+        return;
+      }
+      const icsContent = buildConsolidatedIcsString();
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'consolidated-busy-hours.ics';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      showToast(`Downloaded consolidated-busy-hours.ics (${state.mergedBlocks.length} busy blocks).`, 'success');
+    }
+
+    function getConfiguredUrls() {
+      return state.slots
+        .map((s, idx) => ({
+          slotNum: idx + 1,
+          label: s.label || `Calendar ${idx + 1}`,
+          url: (s.url || '').trim(),
+          enabled: Boolean(s.enabled),
+        }))
+        .filter((item) => item.enabled && item.mode !== undefined ? true : item.enabled)
+        .filter((item) => Boolean(item.url));
+    }
+
+    function buildServerlessEndpointCode() {
+      const urlSlots = state.slots
+        .map((s, idx) => ({
+          envName: `CAL_SLOT_${idx + 1}_URL`,
+          label: s.label || `Calendar ${idx + 1}`,
+          url: (s.url || '').trim(),
+          enabled: Boolean(s.enabled),
+        }))
+        .filter((item) => item.enabled && item.url);
+
+      const envArrayLiteral =
+        urlSlots.length > 0
+          ? JSON.stringify(
+              urlSlots.map((u) => u.url),
+              null,
+              2
+            )
+          : '[\n  process.env.CAL_SLOT_1_URL,\n  process.env.CAL_SLOT_2_URL\n]';
+
+      return [
+        "import ical from 'node-ical';",
+        '',
+        'const FEED_URLS = ' + envArrayLiteral + '.filter(Boolean);',
+        '',
+        'function toUtcIcs(date) {',
+        "  return date.toISOString().replace(/[-:]/g, '').replace(/\\.\\d{3}Z$/, 'Z');",
+        '}',
+        '',
+        'export default async function handler(req, res) {',
+        '  try {',
+        '    if (!FEED_URLS.length) {',
+        "      return res.status(400).send('Configure at least one calendar feed URL.');",
+        '    }',
+        '',
+        '    const now = new Date();',
+        '    const horizon = new Date(now.getTime() + 270 * 24 * 3600 * 1000);',
+        '    const slots = [];',
+        '',
+        '    await Promise.all(',
+        '      FEED_URLS.map(async (url) => {',
+        '        try {',
+        '          const data = await ical.async.fromURL(url);',
+        '          for (const ev of Object.values(data)) {',
+        "            if (!ev || ev.type !== 'VEVENT' || !ev.start || !ev.end) continue;",
+        "            if (String(ev.transparency || '').toUpperCase() === 'TRANSPARENT') continue;",
+        '            if (ev.rrule) {',
+        '              const duration = ev.end.getTime() - ev.start.getTime();',
+        '              for (const d of ev.rrule.between(now, horizon, true)) {',
+        '                slots.push({ start: d, end: new Date(d.getTime() + duration) });',
+        '              }',
+        '            } else if (ev.end >= now && ev.start <= horizon) {',
+        '              slots.push({ start: ev.start, end: ev.end });',
+        '            }',
+        '          }',
+        '        } catch (err) {',
+        "          console.error('Feed fetch error:', err && err.message ? err.message : err);",
+        '        }',
+        '      })',
+        '    );',
+        '',
+        '    slots.sort((a, b) => a.start - b.start || a.end - b.end);',
+        '    const merged = [];',
+        '    for (const s of slots) {',
+        '      const prev = merged[merged.length - 1];',
+        '      if (prev && s.start <= prev.end) {',
+        '        if (s.end > prev.end) prev.end = s.end;',
+        '      } else {',
+        '        merged.push({ start: s.start, end: s.end });',
+        '      }',
+        '    }',
+        '',
+        '    const lines = [',
+        "      'BEGIN:VCALENDAR',",
+        "      'VERSION:2.0',",
+        "      'PRODID:-//Consolidated Busy Feed//EN',",
+        "      'CALSCALE:GREGORIAN',",
+        "      'METHOD:PUBLISH',",
+        "      'X-WR-CALNAME:Consolidated Busy Hours',",
+        "      'X-WR-TIMEZONE:UTC'",
+        '    ];',
+        '',
+        '    merged.forEach((m, i) => {',
+        '      lines.push(',
+        "        'BEGIN:VEVENT',",
+        '        `UID:busy-${i}-${toUtcIcs(m.start)}@busy-feed`,',
+        '        `DTSTART:${toUtcIcs(m.start)}`,',
+        '        `DTEND:${toUtcIcs(m.end)}`,',
+        "        'SUMMARY:Busy',",
+        "        'TRANSP:OPAQUE',",
+        "        'STATUS:CONFIRMED',",
+        "        'END:VEVENT'",
+        '      );',
+        '    });',
+        '',
+        "    lines.push('END:VCALENDAR');",
+        "    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');",
+        "    res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate');",
+        "    return res.status(200).send(lines.join('\\r\\n') + '\\r\\n');",
+        '  } catch (err) {',
+        "    return res.status(500).send('Error generating busy feed.');",
+        '  }',
+        '}',
+      ].join('\n');
+    }
+
+    function renderFeedDrawer() {
+      const sessionInput = document.getElementById('session-feed-url');
+      const countEl = document.getElementById('configured-urls-count');
+      const codeEl = document.getElementById('vercel-api-code');
+
+      if (state.currentBlobUrl) {
+        URL.revokeObjectURL(state.currentBlobUrl);
+        state.currentBlobUrl = null;
+      }
+
+      if (state.mergedBlocks.length > 0) {
+        const blob = new Blob([buildConsolidatedIcsString()], { type: 'text/calendar;charset=utf-8' });
+        state.currentBlobUrl = URL.createObjectURL(blob);
+        if (sessionInput) sessionInput.value = state.currentBlobUrl;
+      } else if (sessionInput) {
+        sessionInput.value = 'Add events to generate a session .ics feed URL';
+      }
+
+      const urlSlots = getConfiguredUrls();
+      if (countEl) {
+        countEl.textContent = `${urlSlots.length} shared URL${urlSlots.length === 1 ? '' : 's'} configured across slots`;
+      }
+      if (codeEl) {
+        codeEl.textContent = buildServerlessEndpointCode();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Dynamic Slot Controls (2 to 10) & Clear Rendering
+    // -------------------------------------------------------------------------
+    function escapeHtmlText(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function isTimezoneRequired(slot, parsedInfo) {
+      if (slot.mode === 'json') return true;
+      if (parsedInfo && parsedInfo.hasFloating) return true;
+      return false;
+    }
+
+    function getSlotStatusMeta(slot, parsedInfo) {
+      if (!slot.enabled) {
+        return {
+          text: 'Paused',
+          classes: 'bg-slate-800 text-slate-400 border-slate-700',
+          detail: 'Excluded from busy blocks',
+        };
+      }
+      if (parsedInfo && parsedInfo.error) {
+        return {
+          text: 'Check input',
+          classes: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+          detail: parsedInfo.error,
+        };
+      }
+      const count = parsedInfo && Array.isArray(parsedInfo.intervals) ? parsedInfo.intervals.length : 0;
+      if (count > 0) {
+        return {
+          text: `${count} busy slot${count === 1 ? '' : 's'}`,
+          classes: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+          detail: parsedInfo.format ? `Source: ${parsedInfo.format}` : 'Parsed & active',
+        };
+      }
+      if (slot.mode === 'url' && (slot.url || '').trim()) {
+        return {
+          text: 'URL set',
+          classes: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+          detail: 'Included in export & feed config',
+        };
+      }
+      return {
+        text: 'Empty',
+        classes: 'bg-slate-800/90 text-slate-400 border-slate-700',
+        detail:
+          slot.mode === 'url'
+            ? 'Paste a shared .ics / feed URL'
+            : slot.mode === 'json'
+              ? 'Upload or paste a JSON schedule array'
+              : 'Upload or paste an .ics calendar',
+      };
+    }
+
+    function getSlotModeHelperText(mode) {
+      if (mode === 'url') {
+        return 'Paste a published .ics or shared calendar URL. Note: browser CORS rules may block direct browser fetches of some private URLs, so it will still be included in your reusable feed & endpoint.';
+      }
+      if (mode === 'json') {
+        return 'Upload or paste a JSON array of events with start/end (or start_date/end_date) and select the source timezone below if timestamps have no offset.';
+      }
+      return 'Upload a .ics file or paste VEVENT / VCALENDAR text. Timezones embedded inside the .ics file are handled automatically.';
+    }
+
+    async function fetchSlotUrl(slot) {
+      const targetUrl = (slot.url || '').trim();
+      if (!targetUrl) {
+        showToast(`Enter a calendar URL in ${slot.label} first.`, 'error');
+        return;
+      }
+      try {
+        const resp = await fetch(targetUrl);
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const text = await resp.text();
+        const parsed = parseIcsContent(text, slot);
+        if (parsed.error) {
+          throw new Error(parsed.error);
+        }
+        state.parsedBySlot[slot.id] = {
+          ...parsed,
+          fromFetchedUrl: true,
+          url: targetUrl,
+          format: 'Shared URL',
+        };
+        slot.sourceName = targetUrl;
+        saveState();
+        recomputeAll();
+        showToast(`Fetched ${parsed.intervals.length} busy slots from ${slot.label}.`, 'success');
+      } catch (err) {
+        state.parsedBySlot[slot.id] = {
+          intervals: [],
+          freeCount: 0,
+          hasFloating: false,
+          error: `Direct fetch blocked or failed (${err.message}). URL is still kept for feed export.`,
+          format: 'Shared URL',
+          fromFetchedUrl: false,
+          url: targetUrl,
+        };
+        renderSlots();
+        showToast(`Could not fetch URL directly in browser (${err.message}).`, 'info');
+      }
+    }
+
+    function renderSlots() {
+      const container = document.getElementById('slots-container');
+      const countHeading = document.getElementById('slot-count-heading');
+      const removeBtn = document.getElementById('btn-remove-slot');
+      const addBtn = document.getElementById('btn-add-slot');
+      if (!container) return;
+
+      if (countHeading) countHeading.textContent = String(state.slots.length);
+      if (removeBtn) removeBtn.disabled = state.slots.length <= MIN_SLOTS;
+      if (addBtn) addBtn.disabled = state.slots.length >= MAX_SLOTS;
+
+      container.innerHTML = '';
+
+      state.slots.forEach((slot, idx) => {
+        const slotNum = idx + 1;
+        const parsed = state.parsedBySlot[slot.id] || {
+          intervals: [],
+          freeCount: 0,
+          hasFloating: false,
+          error: null,
+          format: null,
+        };
+        const tzNeeded = isTimezoneRequired(slot, parsed);
+        const showTzPicker = tzNeeded || slot.tzOverride;
+        const status = getSlotStatusMeta(slot, parsed);
+        const busyCount = parsed.intervals.length;
+
+        const tzOptionsHtml = TIMEZONE_OPTIONS.map(
+          (t) =>
+            `<option value="${escapeHtmlText(t.value)}" ${slot.timezone === t.value ? 'selected' : ''}>${escapeHtmlText(t.label)}</option>`
+        ).join('');
+
+        const card = document.createElement('div');
+        card.className = `bg-slate-900/90 border rounded-xl p-4 sm:p-5 transition ${
+          slot.enabled ? 'border-slate-800' : 'border-slate-800/50 opacity-70'
+        }`;
+
+        card.innerHTML = `
+          <!-- Clear Slot Header: Number Badge, Editable Name, Status Pill & Enable Toggle -->
+          <div class="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-800/80">
+            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+              <span class="w-7 h-7 shrink-0 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold inline-flex items-center justify-center">
+                ${slotNum}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+                  Slot ${slotNum} of ${state.slots.length}
+                </div>
+                <input
+                  type="text"
+                  data-role="label"
+                  value="${escapeHtmlText(slot.label)}"
+                  aria-label="Slot ${slotNum} name"
+                  class="w-full max-w-xs bg-transparent text-sm sm:text-base font-semibold text-white border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none py-0.5"
+                />
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+              <span class="px-2.5 py-1 rounded-full text-[11px] font-medium border ${status.classes}">
+                ${escapeHtmlText(status.text)}
+              </span>
+
+              <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1">
+                <input
+                  type="checkbox"
+                  data-role="enabled"
+                  ${slot.enabled ? 'checked' : ''}
+                  class="rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
+                />
+                <span>Include</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Step 1: Source Type Selector -->
+          <div class="mt-3.5">
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              1. How do you want to provide this calendar?
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                data-role="mode-btn"
+                data-mode="ics"
+                class="py-1.5 px-2 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  slot.mode === 'ics' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }"
+              >
+                ICS File / Text
+              </button>
+              <button
+                type="button"
+                data-role="mode-btn"
+                data-mode="json"
+                class="py-1.5 px-2 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  slot.mode === 'json' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }"
+              >
+                JSON Schedule
+              </button>
+              <button
+                type="button"
+                data-role="mode-btn"
+                data-mode="url"
+                class="py-1.5 px-2 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  slot.mode === 'url' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }"
+              >
+                Shared Feed URL
+              </button>
+            </div>
+            <p class="mt-1.5 text-[11px] text-slate-400 leading-relaxed">
+              ${escapeHtmlText(getSlotModeHelperText(slot.mode))}
+            </p>
+          </div>
+
+          <!-- Step 2: Clear Timezone Rule Row -->
+          <div class="mt-3.5 bg-slate-950/75 border border-slate-800/90 rounded-xl px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="text-xs">
+              <span class="font-semibold text-slate-200">2. Source Timezone: </span>
+              ${
+                tzNeeded
+                  ? `<span class="text-amber-300 font-medium">${
+                      slot.mode === 'json'
+                        ? 'Required for JSON timestamps'
+                        : 'Detected floating/unlabeled time — select timezone'
+                    }</span>`
+                  : showTzPicker
+                    ? `<span class="text-indigo-300 font-medium">Manual override active</span>`
+                    : `<span class="text-slate-400">Not needed (ICS embeds timezone)</span>`
+              }
+            </div>
+
+            <div class="flex items-center gap-2">
+              ${
+                showTzPicker
+                  ? `<select
+                      data-role="timezone"
+                      aria-label="Source timezone for ${escapeHtmlText(slot.label)}"
+                      class="bg-slate-900 text-slate-100 text-xs border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      ${tzOptionsHtml}
+                    </select>`
+                  : ''
+              }
+              ${
+                !tzNeeded
+                  ? `<button
+                      type="button"
+                      data-role="toggle-tz-override"
+                      class="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition cursor-pointer shrink-0"
+                    >
+                      ${showTzPicker ? 'Hide TZ' : 'Set TZ'}
+                    </button>`
+                  : ''
+              }
+            </div>
+          </div>
+
+          <!-- Step 3: Calendar Input Area -->
+          <div class="mt-3.5">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                3. ${
+                  slot.mode === 'url'
+                    ? 'Shared Calendar / iCal URL'
+                    : slot.mode === 'json'
+                      ? 'JSON Events Array'
+                      : 'ICS File or Raw Calendar Content'
+                }
+              </span>
+              ${
+                slot.sourceName
+                  ? `<span class="text-[11px] font-mono text-indigo-300 truncate max-w-[200px]">${escapeHtmlText(slot.sourceName)}</span>`
+                  : ''
+              }
+            </div>
+
+            ${
+              slot.mode === 'url'
+                ? `
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="url"
+                      data-role="url"
+                      value="${escapeHtmlText(slot.url)}"
+                      placeholder="https://example.com/calendar.ics"
+                      class="flex-1 bg-slate-950 text-slate-100 text-xs sm:text-sm border border-slate-800 rounded-lg px-3 py-2 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      data-role="fetch-url"
+                      class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer shrink-0"
+                    >
+                      Fetch Now
+                    </button>
+                  </div>
+                `
+                : `
+                  <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer transition">
+                      <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>Choose ${slot.mode === 'json' ? '.json' : '.ics'} File</span>
+                      <input
+                        type="file"
+                        data-role="file"
+                        accept="${slot.mode === 'json' ? '.json,application/json,text/plain' : '.ics,text/calendar,text/plain'}"
+                        class="hidden"
+                      />
+                    </label>
+
+                    ${
+                      slot.rawText || slot.sourceName
+                        ? `<button
+                            type="button"
+                            data-role="clear-slot"
+                            class="text-xs text-slate-400 hover:text-rose-300 px-2 py-1 rounded transition cursor-pointer"
+                          >
+                            Clear Slot Data
+                          </button>`
+                        : ''
+                    }
+                  </div>
+
+                  <textarea
+                    data-role="raw"
+                    rows="3"
+                    placeholder="${
+                      slot.mode === 'json'
+                        ? 'Paste JSON array, e.g. [{"start":"2026-11-24 13:00:00","end":"2026-11-24 15:00:00","title":"Session"}]'
+                        : 'Or paste VCALENDAR / VEVENT .ics text here...'
+                    }"
+                    class="w-full bg-slate-950 text-slate-200 text-xs font-mono border border-slate-800 rounded-lg p-2.5 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >${escapeHtmlText(slot.rawText)}</textarea>
+                `
+            }
+          </div>
+
+          <!-- Slot Footer Feedback -->
+          <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <span class="${parsed.error ? 'text-rose-400 font-medium' : 'text-slate-400'}">
+              ${escapeHtmlText(status.detail)}
+            </span>
+            <span class="text-slate-500">
+              ${busyCount > 0 ? `${busyCount} busy block${busyCount === 1 ? '' : 's'} extracted` : 'No busy blocks yet'}
+            </span>
+          </div>
+        `;
+
+        const labelInput = card.querySelector('[data-role="label"]');
+        if (labelInput) {
+          labelInput.addEventListener('input', (e) => {
+            slot.label = e.target.value;
+            saveState();
+            renderPreview();
+            renderFeedDrawer();
+          });
+        }
+
+        const enabledCheckbox = card.querySelector('[data-role="enabled"]');
+        if (enabledCheckbox) {
+          enabledCheckbox.addEventListener('change', (e) => {
+            slot.enabled = e.target.checked;
+            saveState();
+            recomputeAll();
+          });
+        }
+
+        card.querySelectorAll('[data-role="mode-btn"]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const nextMode = btn.getAttribute('data-mode');
+            slot.mode = nextMode;
+            if (nextMode === 'json' && (!slot.timezone || slot.timezone === 'UTC')) {
+              slot.timezone = 'Europe/Paris';
+            }
+            saveState();
+            recomputeAll();
+          });
+        });
+
+        const tzSelect = card.querySelector('[data-role="timezone"]');
+        if (tzSelect) {
+          tzSelect.addEventListener('change', (e) => {
+            slot.timezone = e.target.value;
+            saveState();
+            recomputeAll();
+          });
+        }
+
+        const tzOverrideBtn = card.querySelector('[data-role="toggle-tz-override"]');
+        if (tzOverrideBtn) {
+          tzOverrideBtn.addEventListener('click', () => {
+            slot.tzOverride = !slot.tzOverride;
+            saveState();
+            renderSlots();
+          });
+        }
+
+        const urlInput = card.querySelector('[data-role="url"]');
+        if (urlInput) {
+          urlInput.addEventListener('input', (e) => {
+            slot.url = e.target.value;
+            saveState();
+            renderFeedDrawer();
+          });
+        }
+
+        const fetchUrlBtn = card.querySelector('[data-role="fetch-url"]');
+        if (fetchUrlBtn) {
+          fetchUrlBtn.addEventListener('click', () => fetchSlotUrl(slot));
+        }
+
+        const fileInput = card.querySelector('[data-role="file"]');
+        if (fileInput) {
+          fileInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              slot.rawText = String(ev.target.result || '');
+              slot.sourceName = file.name;
+              saveState();
+              recomputeAll();
+              showToast(`Loaded "${file.name}" into ${slot.label}.`, 'success');
+            };
+            reader.onerror = () => {
+              showToast(`Could not read "${file.name}".`, 'error');
+            };
+            reader.readAsText(file);
+          });
+        }
+
+        const rawTextarea = card.querySelector('[data-role="raw"]');
+        if (rawTextarea) {
+          rawTextarea.addEventListener('input', (e) => {
+            slot.rawText = e.target.value;
+            if (!slot.sourceName) slot.sourceName = 'Pasted input';
+            saveState();
+            recomputeAll();
+          });
+        }
+
+        const clearSlotBtn = card.querySelector('[data-role="clear-slot"]');
+        if (clearSlotBtn) {
+          clearSlotBtn.addEventListener('click', () => {
+            slot.rawText = '';
+            slot.sourceName = '';
+            saveState();
+            recomputeAll();
+            showToast(`Cleared data from ${slot.label}.`, 'info');
+          });
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Consolidated Busy Blocks Preview Renderer
+    // -------------------------------------------------------------------------
+    function renderPreview() {
+      const listEl = document.getElementById('busy-preview-list');
+      const badgeEl = document.getElementById('preview-count-badge');
+      const filterEl = document.getElementById('preview-filter');
+      const upcomingEl = document.getElementById('upcoming-only');
+      if (!listEl) return;
+
+      const query = (filterEl ? filterEl.value : '').trim().toLowerCase();
+      const upcomingOnly = Boolean(upcomingEl && upcomingEl.checked);
+      const nowMs = Date.now();
+
+      const filtered = state.mergedBlocks.filter((block) => {
+        if (upcomingOnly && block.end.getTime() < nowMs) return false;
+        if (!query) return true;
+        const startLabel = formatInZone(block.start, state.displayTz, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).toLowerCase();
+        const srcText = block.sources
+          .map((s) => `${s.slotLabel || ''} ${s.title || ''}`)
+          .join(' ')
+          .toLowerCase();
+        return startLabel.includes(query) || srcText.includes(query) || 'busy'.includes(query);
+      });
+
+      if (badgeEl) {
+        badgeEl.textContent = `${filtered.length} block${filtered.length === 1 ? '' : 's'}`;
+      }
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center py-12 px-4 border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+            ${
+              state.mergedBlocks.length === 0
+                ? 'No busy intervals loaded yet. Add an ICS file, JSON schedule, or feed URL in any slot.'
+                : 'No busy blocks match your current filter.'
+            }
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = '';
+      filtered.slice(0, 200).forEach((block) => {
+        const dayStr = formatInZone(block.start, state.displayTz, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+        const startTimeStr = formatInZone(block.start, state.displayTz, {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const endTimeStr = formatInZone(block.end, state.displayTz, {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const durationMins = Math.max(1, Math.round((block.end.getTime() - block.start.getTime()) / 60000));
+        const slotNames = [...new Set(block.sources.map((s) => s.slotLabel).filter(Boolean))].join(' + ');
+
+        const row = document.createElement('div');
+        row.className = 'bg-slate-950/85 border border-slate-800/90 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
+              <span class="text-xs font-semibold text-white truncate">Busy</span>
+              <span class="text-[11px] text-slate-500 truncate">${escapeHtmlText(slotNames || 'Merged')}</span>
+            </div>
+            <div class="text-[11px] text-slate-400 mt-0.5 font-mono">
+              ${escapeHtmlText(dayStr)} • ${escapeHtmlText(startTimeStr)} – ${escapeHtmlText(endTimeStr)}
+            </div>
+          </div>
+          <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 shrink-0">
+            ${durationMins}m
+          </span>
+        `;
+        listEl.appendChild(row);
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Auth & GDPR Modal Controls
+    // -------------------------------------------------------------------------
+    function updateHeaderAccountUI() {
+      const labelEl = document.getElementById('header-account-label');
+      const gdprStatusEl = document.getElementById('gdpr-session-status');
+      const retentionSelectEl = document.getElementById('retention-mode');
+
+      if (retentionSelectEl) {
+        retentionSelectEl.value = state.retentionMode;
+      }
+
+      if (!state.isGuest && state.currentUserEmail && state.users[state.currentUserEmail]) {
+        const u = state.users[state.currentUserEmail];
+        const shortName = u.name && u.name.trim() ? u.name.trim() : u.email;
+        if (labelEl) labelEl.textContent = shortName;
+        if (gdprStatusEl) gdprStatusEl.textContent = `Signed in (${u.email})`;
+      } else {
+        state.isGuest = true;
+        if (labelEl) labelEl.textContent = 'Guest';
+        if (gdprStatusEl) gdprStatusEl.textContent = 'Guest Mode (Local)';
+      }
+    }
+
+    function openModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.style.display = 'flex';
+    }
+
+    function closeModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (!el) return;
+      el.classList.add('hidden');
+      el.style.display = 'none';
+    }
+
+    function switchAuthTab(mode) {
+      const tabLogin = document.getElementById('tab-login');
+      const tabSignup = document.getElementById('tab-signup');
+      const loginForm = document.getElementById('login-form');
+      const signupForm = document.getElementById('signup-form');
+      const loginErr = document.getElementById('login-error');
+      const signupErr = document.getElementById('signup-error');
+
+      if (loginErr) loginErr.classList.add('hidden');
+      if (signupErr) signupErr.classList.add('hidden');
+
+      if (mode === 'signup') {
+        if (tabSignup) tabSignup.className = 'py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition cursor-pointer';
+        if (tabLogin) tabLogin.className = 'py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition cursor-pointer';
+        if (signupForm) signupForm.classList.remove('hidden');
+        if (loginForm) loginForm.classList.add('hidden');
+      } else {
+        if (tabLogin) tabLogin.className = 'py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition cursor-pointer';
+        if (tabSignup) tabSignup.className = 'py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition cursor-pointer';
+        if (loginForm) loginForm.classList.remove('hidden');
+        if (signupForm) signupForm.classList.add('hidden');
+      }
+    }
+
+    function exportAllGdprJson() {
+      const exportPayload = {
+        exportedAt: new Date().toISOString(),
+        gdprNotice: 'Local data export under GDPR Art. 15 & Art. 20. Password hashes are PBKDF2-SHA256 derived verifiers; plaintext passwords are never stored.',
+        session: {
+          mode: state.isGuest ? 'guest' : 'authenticated',
+          email: state.currentUserEmail || null,
+          retentionMode: state.retentionMode,
+        },
+        preferences: {
+          displayTz: state.displayTz,
+          mergeAdjacent: state.mergeAdjacent,
+          vercelBaseUrl: state.vercelBaseUrl,
+        },
+        slots: state.slots.map((s, idx) => ({
+          slotNumber: idx + 1,
+          label: s.label,
+          mode: s.mode,
+          timezone: s.timezone,
+          tzOverride: s.tzOverride,
+          url: s.url,
+          sourceName: s.sourceName,
+          enabled: s.enabled,
+          hasContent: Boolean(s.rawText),
+        })),
+        mergedBusyBlocks: state.mergedBlocks.map((b) => ({
+          startUtc: b.start.toISOString(),
+          endUtc: b.end.toISOString(),
+          durationMinutes: Math.round((b.end.getTime() - b.start.getTime()) / 60000),
+          sources: b.sources.map((src) => src.slotLabel),
+        })),
+      };
+
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'gdpr-calendar-data-export.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      showToast('Exported GDPR JSON data package.', 'success');
+    }
+
+    function eraseAllDataGdpr() {
+      const hintEl = document.getElementById('erase-confirm-hint');
+      if (!state.eraseArmed) {
+        state.eraseArmed = true;
+        if (hintEl) {
+          hintEl.textContent = 'Click "Erase All Data" once more within 8 seconds to permanently delete all local data.';
+        }
+        showToast('Click Erase All Data again to confirm permanent deletion.', 'info');
+        setTimeout(() => {
+          state.eraseArmed = false;
+          if (hintEl) {
+            hintEl.textContent = 'Permanently wipes all local accounts, sessions, calendar slots, feed URLs, and cached schedules.';
+          }
+        }, 8000);
+        return;
+      }
+
+      state.eraseArmed = false;
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      } catch (_) {
+        // Ignore
+      }
+
+      state.users = {};
+      state.currentUserEmail = null;
+      state.isGuest = true;
+      state.authUnlocked = true;
+      state.retentionMode = 'persistent';
+      state.slots = createDefaultSlots(MIN_SLOTS);
+      state.parsedBySlot = {};
+      state.mergedBlocks = [];
+
+      if (hintEl) {
+        hintEl.textContent = 'Permanently wipes all local accounts, sessions, calendar slots, feed URLs, and cached schedules.';
+      }
+      updateHeaderAccountUI();
+      closeModal('gdpr-modal');
+      recomputeAll();
+      showToast('All local accounts, sessions, and calendar data have been erased.', 'success');
+    }
+
+    // -------------------------------------------------------------------------
+    // Event Listeners
+    // -------------------------------------------------------------------------
+    function attachEventListeners() {
+      const addSlotBtn = document.getElementById('btn-add-slot');
+      const removeSlotBtn = document.getElementById('btn-remove-slot');
+      const clearAllBtn = document.getElementById('btn-clear-all');
+      const dlIcsBtn = document.getElementById('btn-download-ics');
+      const genFeedBtn = document.getElementById('btn-generate-feed');
+      const closeFeedBtn = document.getElementById('btn-close-feed');
+      const copySessionUrlBtn = document.getElementById('btn-copy-session-url');
+      const copyVercelUrlBtn = document.getElementById('btn-copy-vercel-url');
+      const copyVercelEnvBtn = document.getElementById('btn-copy-vercel-env');
+      const copyApiCodeBtn = document.getElementById('btn-copy-api-code');
+      const vercelBaseUrlInput = document.getElementById('vercel-base-url');
+      const displayTzSelect = document.getElementById('display-tz');
+      const mergeAdjacentCheckbox = document.getElementById('merge-adjacent');
+      const filterInput = document.getElementById('preview-filter');
+      const upcomingCheckbox = document.getElementById('upcoming-only');
+
+      const openAuthBtn = document.getElementById('btn-open-auth');
+      const closeAuthBtn = document.getElementById('btn-close-auth-modal');
+      const guestBtn = document.getElementById('btn-guest-mode');
+      const tabLogin = document.getElementById('tab-login');
+      const tabSignup = document.getElementById('tab-signup');
+      const loginForm = document.getElementById('login-form');
+      const signupForm = document.getElementById('signup-form');
+
+      const openGdprBtn = document.getElementById('btn-open-gdpr');
+      const closeGdprBtn = document.getElementById('btn-close-gdpr-modal');
+      const retentionSelect = document.getElementById('retention-mode');
+      const logoutBtn = document.getElementById('btn-logout');
+      const exportJsonBtn = document.getElementById('btn-export-gdpr-json');
+      const exportIcsBtn = document.getElementById('btn-export-gdpr-ics');
+      const eraseAllBtn = document.getElementById('btn-erase-all-gdpr');
+
+      if (addSlotBtn) {
+        addSlotBtn.addEventListener('click', () => {
+          if (state.slots.length >= MAX_SLOTS) {
+            showToast(`Maximum of ${MAX_SLOTS} calendar slots reached.`, 'info');
+            return;
+          }
+          const nextNum = state.slots.length + 1;
+          state.slots.push(makeSlot(nextNum));
+          saveState();
+          recomputeAll();
+          showToast(`Added Calendar ${nextNum}.`, 'success');
+        });
+      }
+
+      if (removeSlotBtn) {
+        removeSlotBtn.addEventListener('click', () => {
+          if (state.slots.length <= MIN_SLOTS) {
+            showToast(`At least ${MIN_SLOTS} calendar slots are required.`, 'info');
+            return;
+          }
+          const removed = state.slots.pop();
+          if (removed) {
+            delete state.parsedBySlot[removed.id];
+          }
+          saveState();
+          recomputeAll();
+          showToast(`Removed ${removed ? removed.label : 'last slot'}.`, 'info');
+        });
+      }
+
+      if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', () => {
+          state.slots = createDefaultSlots(MIN_SLOTS);
+          state.parsedBySlot = {};
+          state.mergedBlocks = [];
+          saveState();
+          recomputeAll();
+          showToast('Reset to 2 empty calendar slots.', 'info');
+        });
+      }
+
+      if (dlIcsBtn) {
+        dlIcsBtn.addEventListener('click', downloadConsolidatedIcs);
+      }
+
+      if (genFeedBtn) {
+        genFeedBtn.addEventListener('click', () => {
+          renderFeedDrawer();
+          const drawer = document.getElementById('feed-drawer');
+          if (drawer) drawer.classList.remove('hidden');
+          showToast('Generated reusable feed details.', 'success');
+        });
+      }
+
+      if (closeFeedBtn) {
+        closeFeedBtn.addEventListener('click', () => {
+          const drawer = document.getElementById('feed-drawer');
+          if (drawer) drawer.classList.add('hidden');
+        });
+      }
+
+      if (copySessionUrlBtn) {
+        copySessionUrlBtn.addEventListener('click', () => {
+          const val = document.getElementById('session-feed-url')?.value || '';
+          copyToClipboard(val, 'Copied session feed URL.');
+        });
+      }
+
+      if (copyVercelUrlBtn) {
+        copyVercelUrlBtn.addEventListener('click', () => {
+          const base = (state.vercelBaseUrl || 'https://your-project.vercel.app').replace(/\/+$/, '');
+          copyToClipboard(`${base}/api/busy.ics`, 'Copied /api/busy.ics feed URL.');
+        });
+      }
+
+      if (copyVercelEnvBtn) {
+        copyVercelEnvBtn.addEventListener('click', () => {
+          const urlSlots = getConfiguredUrls();
+          if (urlSlots.length === 0) {
+            showToast('No shared URLs entered in active slots yet.', 'info');
+            return;
+          }
+          const envText = urlSlots.map((u) => `CAL_SLOT_${u.slotNum}_URL=${u.url}`).join('\n');
+          copyToClipboard(envText, 'Copied slot environment variables.');
+        });
+      }
+
+      if (copyApiCodeBtn) {
+        copyApiCodeBtn.addEventListener('click', () => {
+          copyToClipboard(buildServerlessEndpointCode(), 'Copied api/busy.js code.');
+        });
+      }
+
+      if (vercelBaseUrlInput) {
+        vercelBaseUrlInput.addEventListener('input', (e) => {
+          state.vercelBaseUrl = e.target.value.trim() || 'https://your-calendar-merger.vercel.app';
+          saveState();
+        });
+      }
+
+      if (displayTzSelect) {
+        displayTzSelect.addEventListener('change', (e) => {
+          state.displayTz = e.target.value;
+          saveState();
+          recomputeAll();
+        });
+      }
+
+      if (mergeAdjacentCheckbox) {
+        mergeAdjacentCheckbox.addEventListener('change', (e) => {
+          state.mergeAdjacent = e.target.checked;
+          saveState();
+          recomputeAll();
+        });
+      }
+
+      if (filterInput) {
+        filterInput.addEventListener('input', renderPreview);
+      }
+
+      if (upcomingCheckbox) {
+        upcomingCheckbox.addEventListener('change', renderPreview);
+      }
+
+      // Auth & GDPR listeners
+      if (openAuthBtn) {
+        openAuthBtn.addEventListener('click', () => {
+          switchAuthTab('login');
+          openModal('auth-modal');
+        });
+      }
+
+      if (closeAuthBtn) {
+        closeAuthBtn.addEventListener('click', () => closeModal('auth-modal'));
+      }
+
+      if (guestBtn) {
+        guestBtn.addEventListener('click', () => {
+          state.isGuest = true;
+          state.authUnlocked = true;
+          writeSessionMarker();
+          updateHeaderAccountUI();
+          closeModal('auth-modal');
+          showToast('Continuing in local Guest mode.', 'info');
+        });
+      }
+
+      if (tabLogin) {
+        tabLogin.addEventListener('click', () => switchAuthTab('login'));
+      }
+
+      if (tabSignup) {
+        tabSignup.addEventListener('click', () => switchAuthTab('signup'));
+      }
+
+      if (signupForm) {
+        signupForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const errBox = document.getElementById('signup-error');
+          const nameInput = document.getElementById('signup-name');
+          const emailInput = document.getElementById('signup-email');
+          const passInput = document.getElementById('signup-password');
+          const consentInput = document.getElementById('signup-gdpr-consent');
+
+          const name = (nameInput?.value || '').trim();
+          const email = (emailInput?.value || '').trim().toLowerCase();
+          const password = passInput?.value || '';
+          const consented = Boolean(consentInput?.checked);
+
+          if (!email || !email.includes('@')) {
+            if (errBox) {
+              errBox.textContent = 'Please enter a valid email address.';
+              errBox.classList.remove('hidden');
+            }
+            return;
+          }
+          if (password.length < 8) {
+            if (errBox) {
+              errBox.textContent = 'Password must be at least 8 characters long.';
+              errBox.classList.remove('hidden');
+            }
+            return;
+          }
+          if (!consented) {
+            if (errBox) {
+              errBox.textContent = 'Explicit GDPR consent is required to store account credentials locally.';
+              errBox.classList.remove('hidden');
+            }
+            return;
+          }
+
+          try {
+            const derived = await hashPasswordPbkdf2(password);
+            state.users[email] = {
+              name: name || email.split('@')[0],
+              email,
+              saltHex: derived.saltHex,
+              hashHex: derived.hashHex,
+              consentAcceptedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+            };
+            state.currentUserEmail = email;
+            state.isGuest = false;
+            state.authUnlocked = true;
+            if (errBox) errBox.classList.add('hidden');
+            if (passInput) passInput.value = '';
+            saveState();
+            updateHeaderAccountUI();
+            closeModal('auth-modal');
+            showToast(`Account created for ${email} with GDPR consent recorded.`, 'success');
+          } catch (err) {
+            if (errBox) {
+              errBox.textContent = `Could not derive credential hash: ${err.message}`;
+              errBox.classList.remove('hidden');
+            }
+          }
+        });
+      }
+
+      if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const errBox = document.getElementById('login-error');
+          const emailInput = document.getElementById('login-email');
+          const passInput = document.getElementById('login-password');
+
+          const email = (emailInput?.value || '').trim().toLowerCase();
+          const password = passInput?.value || '';
+          const user = state.users[email];
+
+          if (!user) {
+            if (errBox) {
+              errBox.textContent = 'No local account found for that email. Switch to "Sign Up (GDPR Consent)" or use Guest mode.';
+              errBox.classList.remove('hidden');
+            }
+            return;
+          }
+
+          try {
+            const check = await hashPasswordPbkdf2(password, user.saltHex);
+            if (!constantTimeHexEqual(check.hashHex, user.hashHex)) {
+              if (errBox) {
+                errBox.textContent = 'Incorrect email or password.';
+                errBox.classList.remove('hidden');
+              }
+              return;
+            }
+            state.currentUserEmail = email;
+            state.isGuest = false;
+            state.authUnlocked = true;
+            if (errBox) errBox.classList.add('hidden');
+            if (passInput) passInput.value = '';
+            saveState();
+            updateHeaderAccountUI();
+            closeModal('auth-modal');
+            showToast(`Welcome back, ${user.name}.`, 'success');
+          } catch (err) {
+            if (errBox) {
+              errBox.textContent = `Login verification failed: ${err.message}`;
+              errBox.classList.remove('hidden');
+            }
+          }
+        });
+      }
+
+      if (openGdprBtn) {
+        openGdprBtn.addEventListener('click', () => {
+          updateHeaderAccountUI();
+          openModal('gdpr-modal');
+        });
+      }
+
+      if (closeGdprBtn) {
+        closeGdprBtn.addEventListener('click', () => closeModal('gdpr-modal'));
+      }
+
+      if (retentionSelect) {
+        retentionSelect.addEventListener('change', (e) => {
+          state.retentionMode = e.target.value;
+          saveState();
+          showToast('Updated data retention policy.', 'info');
+        });
+      }
+
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+          state.currentUserEmail = null;
+          state.isGuest = true;
+          writeSessionMarker();
+          saveState();
+          updateHeaderAccountUI();
+          showToast('Logged out to local Guest mode.', 'info');
+        });
+      }
+
+      if (exportJsonBtn) {
+        exportJsonBtn.addEventListener('click', exportAllGdprJson);
+      }
+
+      if (exportIcsBtn) {
+        exportIcsBtn.addEventListener('click', downloadConsolidatedIcs);
+      }
+
+      if (eraseAllBtn) {
+        eraseAllBtn.addEventListener('click', eraseAllDataGdpr);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Initialization
+    // -------------------------------------------------------------------------
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        loadState();
+        const displayTzEl = document.getElementById('display-tz');
+        const mergeAdjEl = document.getElementById('merge-adjacent');
+        const vercelUrlEl = document.getElementById('vercel-base-url');
+        const authModalEl = document.getElementById('auth-modal');
+        const gdprModalEl = document.getElementById('gdpr-modal');
+
+        if (displayTzEl) displayTzEl.value = state.displayTz;
+        if (mergeAdjEl) mergeAdjEl.checked = state.mergeAdjacent;
+        if (vercelUrlEl) vercelUrlEl.value = state.vercelBaseUrl;
+
+        if (authModalEl) {
+          authModalEl.classList.add('hidden');
+          authModalEl.style.display = 'none';
+        }
+        if (gdprModalEl) {
+          gdprModalEl.classList.add('hidden');
+          gdprModalEl.style.display = 'none';
+        }
+
+        updateHeaderAccountUI();
+        attachEventListeners();
+        recomputeAll();
+      } catch (err) {
+        console.error('Initialization error:', err);
+        showToast('Initialization error: ' + err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>
