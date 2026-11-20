@@ -312,20 +312,20 @@
           <span>Merge touching slots</span>
         </label>
 
-        <div class="flex items-center gap-2 pt-3 sm:pt-5 border-t sm:border-t-0 sm:border-l border-slate-800 sm:pl-3 w-full sm:w-auto justify-between sm:justify-start">
+        <div class="flex flex-wrap items-center gap-2 pt-3 sm:pt-5 border-t sm:border-t-0 sm:border-l border-slate-800 sm:pl-3 w-full sm:w-auto justify-between sm:justify-start">
           <button
             id="btn-open-gdpr"
             type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition cursor-pointer"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 transition cursor-pointer"
           >
             GDPR &amp; Privacy
           </button>
           <button
             id="btn-open-auth"
             type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 transition cursor-pointer"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/30 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 transition cursor-pointer"
           >
-            <span id="header-account-label">Guest</span>
+            Login / <span id="header-account-label">Guest</span>
           </button>
         </div>
       </div>
@@ -2234,6 +2234,7 @@
       if (!el) return;
       el.classList.remove('hidden');
       el.style.display = 'flex';
+      el.style.zIndex = '60';
     }
 
     function closeModal(modalId) {
@@ -2698,6 +2699,31 @@
       if (eraseAllBtn) {
         eraseAllBtn.addEventListener('click', eraseAllDataGdpr);
       }
+
+      // Reliable delegated click handlers for Auth & GDPR controls
+      document.addEventListener('click', (e) => {
+        const target = e.target && e.target.closest ? e.target : null;
+        if (!target) return;
+
+        if (target.closest('#btn-open-auth')) {
+          switchAuthTab('login');
+          openModal('auth-modal');
+        } else if (target.closest('#btn-close-auth-modal')) {
+          closeModal('auth-modal');
+        } else if (target.closest('#btn-open-gdpr')) {
+          updateHeaderAccountUI();
+          openModal('gdpr-modal');
+        } else if (target.closest('#btn-close-gdpr-modal')) {
+          closeModal('gdpr-modal');
+        } else if (target.closest('#btn-guest-mode')) {
+          state.isGuest = true;
+          state.authUnlocked = true;
+          writeSessionMarker();
+          updateHeaderAccountUI();
+          closeModal('auth-modal');
+          showToast('Continuing in local Guest mode.', 'info');
+        }
+      });
     }
 
     // -------------------------------------------------------------------------
