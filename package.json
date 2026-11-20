@@ -1,0 +1,7 @@
+{
+       "name": "busy-calendar-merger",
+       "private": true,
+       "dependencies": {
+         "node-ical": "^0.18.0"
+       }
+     }
